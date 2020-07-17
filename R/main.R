@@ -111,9 +111,6 @@ lcp_B_A_density <- (lcp_B_A_density / n)
 raster::writeRaster(x = lcp_A_B_density, filename = "./outputs/Probabilistic Least Cost Paths/lcp_A_B_density.tif")
 raster::writeRaster(x = lcp_B_A_density, filename = "./outputs/Probabilistic Least Cost Paths/lcp_B_A_density.tif")
 
-lcp_A_B_density <- raster::raster("./outputs/Probabilistic Least Cost Paths/lcp_A_B_density.tif")
-lcp_B_A_density <- raster::raster("./outputs/Probabilistic Least Cost Paths/lcp_B_A_density.tif")
-
 #### PRODUCE PROBABILISTIC LEAST COST PATH MAPS ####
 
 lcp_A_B_density_map <- 
