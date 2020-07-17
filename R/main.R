@@ -14,18 +14,7 @@ osgb <- "+init=epsg:27700"
 
 #### PROCESSING SRTM ELEVATION DATA ####
 
-elev_files <- list.files(path = "./Data/SRTM elevation/", pattern = ".hgt$", full.names = TRUE)
-
-elev_list <- lapply(elev_files, raster::raster)
-elev <- do.call(raster::merge, elev_list)
-ext <- as(raster::extent(-3.2, -2.6, 54, 55), 'SpatialPolygons')
-elev <- raster::crop(elev, ext)
-
-elev_osgb <- raster::projectRaster(elev, crs = osgb)
-ext <- as(raster::extent(340650, 350110, 508380, 525060), 'SpatialPolygons')
-elev_osgb <- raster::crop(elev_osgb, ext)
-
-raster::writeRaster(x = elev_osgb, filename = "./Data/SRTM elevation/Elevation OSGB.tif")
+elev_osgb <- raster::raster("./Data/SRTM elevation/Elevation OSGB.tif")
 
 slope = terrain(elev_osgb, opt='slope')
 aspect = terrain(elev_osgb, opt='aspect')
