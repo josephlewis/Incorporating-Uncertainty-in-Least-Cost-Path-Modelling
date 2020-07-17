@@ -25,15 +25,17 @@ elev_osgb <- raster::projectRaster(elev, crs = osgb)
 ext <- as(raster::extent(340650, 350110, 508380, 525060), 'SpatialPolygons')
 elev_osgb <- raster::crop(elev_osgb, ext)
 
+raster::writeRaster(x = elev_osgb, filename = "./Data/SRTM elevation/Elevation OSGB.tif")
+
 slope = terrain(elev_osgb, opt='slope')
 aspect = terrain(elev_osgb, opt='aspect')
 hill = hillShade(slope, aspect, 40, 270)
 
 #### PROCESSING HIGH STREET ROMAN ROAD ####
 
-road <- rgdal::readOGR("./Data/scheduled_monuments/ScheduledMonuments_20Dec2018.shp")
-# subset to road of interest
-road <- road[road$ListEntry == 1003275,]
+road <- rgdal::readOGR("./Data/scheduled_monuments/High_Street_Roman_Road.shp")
+
+raster::crs(road) <- raster::crs(osgb)
 
 #### ORIGIN AND DESTINATIONS OF LEAST COST PATH ####
 
