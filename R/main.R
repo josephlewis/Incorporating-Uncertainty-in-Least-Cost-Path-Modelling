@@ -6,7 +6,7 @@ library(sp) # for vector manipulation
 library(rgeos) # for vector operations
 library(leastcostpath) # for creating cost surfaces, adding vertical error, calculating least cost paths and probabilistic least cost path
 library(tmap) # for producing probabilistic least cost path maps
-library(ggplot2) # for producing boxplot graph
+library(ggplot2) # for producing histograms graph
 
 #### COORDINATE SYSTEM ####
 
@@ -14,7 +14,18 @@ osgb <- "+init=epsg:27700"
 
 #### PROCESSING SRTM ELEVATION DATA ####
 
-elev_osgb <- raster::raster("./Data/SRTM elevation/Elevation OSGB.tif")
+elev_files <- list.files(path = "./Data/SRTM elevation/", pattern = ".hgt$", full.names = TRUE)
+
+elev_list <- lapply(elev_files, raster::raster)
+elev <- do.call(raster::merge, elev_list)
+ext <- as(raster::extent(-3.2, -2.6, 54, 55), 'SpatialPolygons')
+elev <- raster::crop(elev, ext)
+
+elev_osgb <- raster::projectRaster(elev, crs = osgb)
+ext <- as(raster::extent(340650, 350110, 508380, 525060), 'SpatialPolygons')
+elev_osgb <- raster::crop(elev_osgb, ext)
+
+raster::writeRaster(x = elev_osgb, filename = "./Data/SRTM elevation/Elevation OSGB.tif")
 
 slope = terrain(elev_osgb, opt='slope')
 aspect = terrain(elev_osgb, opt='aspect')
@@ -110,6 +121,9 @@ lcp_B_A_density <- (lcp_B_A_density / n)
 
 raster::writeRaster(x = lcp_A_B_density, filename = "./outputs/Probabilistic Least Cost Paths/lcp_A_B_density.tif")
 raster::writeRaster(x = lcp_B_A_density, filename = "./outputs/Probabilistic Least Cost Paths/lcp_B_A_density.tif")
+
+lcp_A_B_density <- raster::raster("./outputs/Probabilistic Least Cost Paths/lcp_A_B_density.tif")
+lcp_B_A_density <- raster::raster("./outputs/Probabilistic Least Cost Paths/lcp_B_A_density.tif")
 
 #### PRODUCE PROBABILISTIC LEAST COST PATH MAPS ####
 
@@ -210,23 +224,30 @@ lcp_B_A_RMSE_distance <- unlist(lcp_B_A_RMSE_distance)
 write.csv(lcp_A_B_RMSE_distance, "./outputs/Statistical assessments/MC_1000_lcp_A_B_max_distance.csv")
 write.csv(lcp_B_A_RMSE_distance, "./outputs/Statistical assessments/MC_1000_lcp_B_A_max_distance.csv")
 
-#### STATISTICAL COMPARISON OF MAXIMUM DISTANCE DISTRIBUTIONS ####
+#### STATISTICAL ASSESSMENTS OF MAXIMUM DISTANCES - Z SCORES####
 
-welch_t_test <- t.test(lcp_A_B_RMSE_distance, lcp_B_A_RMSE_distance)
+lcp_A_B_RMSE_distance_z <- base::scale(lcp_A_B_RMSE_distance, center= TRUE, scale=TRUE)
+lcp_B_A_RMSE_distance_z <- base::scale(lcp_B_A_RMSE_distance, center= TRUE, scale=TRUE)
 
-write.csv(welch_t_test$p.value, "./outputs/Statistical assessments/welch_t_test_p_value.csv")
+lcp_rmse_distances_z <- rbind(data.frame(id = "North to South", distance = lcp_A_B_RMSE_distance_z), data.frame(id = "South to North", distance = lcp_B_A_RMSE_distance_z))
 
-#### BOXPLOT COMPARING MAXIMUM DISTANCE DISTRIBUTIONS ####
 
-lcp_distances <- rbind(data.frame(id = "North to South", distance = lcp_A_B_RMSE_distance), data.frame(id = "South to North", distance = lcp_B_A_RMSE_distance))
+write.csv(x = (lcp_A_B_distance - mean(lcp_A_B_RMSE_distance)) / sd(lcp_A_B_RMSE_distance), file = "./outputs/Statistical assessments/lcp_A_B_z_score.csv")
+write.csv(x = (lcp_B_A_distance - mean(lcp_B_A_RMSE_distance)) / sd(lcp_B_A_RMSE_distance), file = "./outputs/Statistical assessments/lcp_B_A_z_score.csv")
 
-lcp_distances$id <- factor(lcp_distances$id,levels = c("South to North", "North to South"))
+write.csv(x = stats::pnorm((lcp_B_A_distance - mean(lcp_B_A_RMSE_distance)) / sd(lcp_B_A_RMSE_distance)), file = "./outputs/Statistical assessments/lcp_B_A_probability.csv")
 
-lcp_box_plot <- ggplot(lcp_distances, aes(x=factor(id), y=distance) ) + 
-  geom_jitter(position=position_jitter(width=0.3, height=0.2), aes(colour=factor(id)), alpha=0.9,show.legend = FALSE) +
-  geom_boxplot(alpha = 0.5, show.legend = FALSE, aes(colour=factor(id))) + 
-  coord_flip() + 
+lcp_z_score_plot <- ggplot(data = lcp_rmse_distances_z, aes(x = distance)) + 
+  geom_histogram(aes(fill= id, colour = id), size = 1, alpha = 0.5, bins = 50, show.legend = FALSE) + 
+  facet_wrap(~id) + 
+  geom_vline(data = data.frame(id = "North to South", z_score = (lcp_A_B_distance - mean(lcp_A_B_RMSE_distance)) / sd(lcp_A_B_RMSE_distance)), aes(xintercept = z_score), colour = "black", linetype = "dashed", size = 1.2) + 
+  geom_vline(data = data.frame(id = "South to North", z_score = (lcp_B_A_distance - mean(lcp_B_A_RMSE_distance)) / sd(lcp_B_A_RMSE_distance)), aes(xintercept = z_score), colour = "black", linetype = "dashed", size = 1.2) + 
+  xlim(c(-5, 5)) + 
   theme_minimal(base_size = 24) + 
-  labs(x = "Least Cost Path Direction", y = "Maximum Distance from Least Cost Paths\nto High Street Roman Road (metres)")
+  labs(x = "Z score", y = "Number of Least Cost Paths") + 
+  scale_fill_manual(values=c("#00BFC4", "#F8766D")) +
+  scale_colour_manual(values=c("#00BFC4", "#F8766D")) + 
+  geom_text(data=rbind(data.frame(id = "North to South", z_score = (lcp_A_B_distance - mean(lcp_A_B_RMSE_distance)) / sd(lcp_A_B_RMSE_distance)), data.frame(id = "South to North", z_score = (lcp_B_A_distance - mean(lcp_B_A_RMSE_distance)) / sd(lcp_B_A_RMSE_distance))), 
+            aes(label= paste0("Z = ", round(z_score,2)), x= -2., y=80), colour="black", size = 8)
 
-ggsave(filename = "./outputs/plots/lcp_box_plot.png", plot = lcp_box_plot, dpi = 300, width = 15, height = 7)
+ggsave(filename = "./outputs/plots/lcp_z_score_plot.png", plot = lcp_z_score_plot, dpi = 300, width = 14, height = 7)
