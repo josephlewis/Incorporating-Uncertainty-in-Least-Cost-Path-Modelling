@@ -47,4 +47,4 @@ loaded via a namespace (and not attached):
 
 License
 ---------------
-CC-BY 3.0 unless otherwise stated (see Licenses.md)
+CC-BY 3.0 unless otherwise stated (see Licenses.md and OSOpenData_HE.pdf)
