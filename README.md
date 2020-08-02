@@ -4,7 +4,7 @@ Data and Code also available on Zenodo:
 
 [![DOI](https://zenodo.org/badge/277867759.svg)](https://zenodo.org/badge/latestdoi/277867759)
 
-# Incorporating-Uncertainty-in-Least-Cost-Path-Modelling
+# Probabilistic Modelling using Monte Carlo Simulation for Incorporating Uncertainty in Least Cost Path Results: a Roman Road Case Study
 
 This repository contains all the data and scripts required to fully reproduce all analyses presented in the paper "Probabilistic Modelling using Monte Carlo Simulation for Incorporating Uncertainty in Least Cost Path Results: a Roman Road Case Study" authored by Lewis, J.
 
