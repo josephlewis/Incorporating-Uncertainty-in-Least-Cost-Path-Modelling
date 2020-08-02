@@ -8,6 +8,14 @@ library(leastcostpath) # for creating cost surfaces, adding vertical error, calc
 library(tmap) # for producing probabilistic least cost path maps
 library(ggplot2) # for producing histograms graph
 
+#### CONSTANTS ####
+
+# Number of iterations to run when propogating vertical error on Least Cost Path results
+n <- 1000
+
+# Seed set for reproducibility
+set.seed(76418)
+
 #### COORDINATE SYSTEM ####
 
 osgb <- "+init=epsg:27700"
@@ -18,6 +26,7 @@ elev_osgb <- raster("./Data/SRTM elevation/Elevation OSGB.tif")
 
 raster::crs(elev_osgb) <- raster::crs(osgb)
 
+# create hillshade for plotting
 slope = terrain(elev_osgb, opt='slope')
 aspect = terrain(elev_osgb, opt='aspect')
 hill = hillShade(slope, aspect, 40, 270)
@@ -26,21 +35,26 @@ hill = hillShade(slope, aspect, 40, 270)
 
 road <- rgdal::readOGR("./Data/scheduled_monuments/High_Street_Roman_Road.shp")
 
+# ensure coordinate reference system string is the same - no need to project
 raster::crs(road) <- raster::crs(osgb)
 
 #### ORIGIN AND DESTINATIONS OF LEAST COST PATH - BASED ON NORTHERN AND SOUTHERN ENDS OF HIGH STREET ROMAN ROAD####
 
+# A is the northern point of the Roman road; B is the southern point of the Roman road
 A <- sp::SpatialPoints(cbind(349015.607,524430.065))
 B <- sp::SpatialPoints(cbind(343051.032,508617.526))
 
 #### PROCESSING WATERBODIES ####
 
+# waterbodies to add to plots
 waterbodies <- rgdal::readOGR("./Data/waterbodies/WFD_Lake_Water_Bodies_Cycle_2.shp")
 
 #### CREATE COST SURFACES ####
 
+# cost surface using Tobler's Hiking Function and 16 adjacent cells
 slope_cs <- leastcostpath::create_slope_cs(elev_osgb, cost_function = "tobler", neighbours = 16)
 
+# Least Cost Path from A to B and B to A (due to directional = FALSE)
 lcp <- leastcostpath::create_lcp(cost_surface = slope_cs, origin = A, destination = B, directional = FALSE)
 
 writeOGR(obj = lcp[lcp$direction == "A to B",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_A_B_SRTM", driver = "ESRI Shapefile", overwrite_layer = TRUE)
@@ -48,20 +62,20 @@ writeOGR(obj = lcp[lcp$direction == "B to A",], dsn = "./Outputs/Least Cost Path
 
 #### INCORPORATE VERTICAL ERROR AND CREATE LCPS ####
 
+# create empty list to be filled with Least Cost Paths
 lcps <- list()
-
-n <- 1000
-
-set.seed(76418)
 
 for (i in 1:n) {
   
   print(i)
+  
+  # Create Least Cost Path based on DEM with a random error field representing the vertical error added. Add to lcps list
 
 lcps[[i]] <- leastcostpath::create_lcp(cost_surface = leastcostpath::create_slope_cs(dem = leastcostpath::add_dem_error(dem = elev_osgb, rmse = 9.73, type = "autocorrelated"), cost_function = "tobler", neighbours = 16), origin = A, destination = B, directional = FALSE, cost_distance = TRUE)
 
 }
 
+# bind list of Least Cost Paths to one object
 lcps <- do.call(rbind, lcps)
 
 writeOGR(obj = lcps[lcps$direction == "A to B",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_A_B_SRTM_RMSE_inc", driver = "ESRI Shapefile", overwrite_layer = TRUE)
@@ -103,12 +117,14 @@ tmap_save(lcp_B_A_map, "./outputs/Plots/lcp_B_to_A.png")
 
 #### CALCULATE PROBABILISTIC LEAST COST PATHS ####
 
+# Create Least Cost Path density rasters using the Least Cost Paths incorporating vertical error
 lcp_A_B_density <- create_lcp_density(lcps[lcps$direction == "A to B",], raster = elev_osgb, rescale = FALSE, rasterize_as_points = FALSE)
 lcp_B_A_density <- create_lcp_density(lcps[lcps$direction == "B to A",], raster = elev_osgb, rescale = FALSE, rasterize_as_points = FALSE)
 
 lcp_A_B_density[lcp_A_B_density == 0] <- NA
 lcp_B_A_density[lcp_B_A_density == 0] <- NA
 
+# Convert Least Cost Path density raster to a probability raster denoting the probability that an LCP crosses a cell
 lcp_A_B_density <- (lcp_A_B_density / n)
 lcp_B_A_density <- (lcp_B_A_density / n)
 
@@ -226,17 +242,21 @@ lcp_B_A_RMSE_distance$id <- 1:n
 
 for (i in 1:n) { 
   
+  # calculate mean-maximum accuracy of the Least Cost Paths as the number of simulations increase
   lcp_A_B_RMSE_distance$mean[i] <- mean(lcp_A_B_RMSE_distance$max_distance[1:i]) 
   lcp_B_A_RMSE_distance$mean[i] <- mean(lcp_B_A_RMSE_distance$max_distance[1:i])
   
+  # calculate standard deviation of the maximum accuracy of the Least Cost Paths as the number of simulations increase
   lcp_A_B_RMSE_distance$sd[i] <- sd(lcp_A_B_RMSE_distance$max_distance[1:i])
   lcp_B_A_RMSE_distance$sd[i] <- sd(lcp_B_A_RMSE_distance$max_distance[1:i])
   
 }
 
+# calculate standard error of Least Cost Path accuracy as the number of simulations increase
 lcp_A_B_RMSE_distance$error <- qnorm(0.975) * lcp_A_B_RMSE_distance$sd / sqrt(lcp_A_B_RMSE_distance$id)
 lcp_B_A_RMSE_distance$error <- qnorm(0.975) * lcp_B_A_RMSE_distance$sd / sqrt(lcp_B_A_RMSE_distance$id)
 
+# calculate width of the confidence interval of Least Cost Path accuracy as the number of simulations increase
 lcp_A_B_RMSE_distance$ci_width <- lcp_A_B_RMSE_distance$error * 2
 lcp_B_A_RMSE_distance$ci_width <- lcp_B_A_RMSE_distance$error * 2
 
@@ -246,6 +266,7 @@ lcp_B_A_RMSE_distance$below_95 <- lcp_B_A_RMSE_distance$mean - lcp_B_A_RMSE_dist
 lcp_A_B_RMSE_distance$above_95 <- lcp_A_B_RMSE_distance$mean + lcp_A_B_RMSE_distance$error
 lcp_B_A_RMSE_distance$above_95 <- lcp_B_A_RMSE_distance$mean + lcp_B_A_RMSE_distance$error
 
+# check if confidence interval width less than minimum resolution of the DEM
 lcp_A_B_RMSE_distance$convergence <- lcp_A_B_RMSE_distance$ci_width < min(res(elev_osgb))
 lcp_B_A_RMSE_distance$convergence <- lcp_B_A_RMSE_distance$ci_width < min(res(elev_osgb))
 
@@ -271,11 +292,13 @@ ggsave(filename = "./outputs/plots/LCP_RMSE_convergence.png", plot = LCP_RMSE_co
 
 #### STATISTICAL ASSESSMENTS OF MAXIMUM DISTANCES - Z SCORES ####
 
+# standardise maximum distance of least cost paths incorporating vertical error to mean 0 and Standard Deviation 1.  
 lcp_A_B_RMSE_distance_z <- base::scale(lcp_A_B_RMSE_distance$max_distance, center= TRUE, scale=TRUE)
 lcp_B_A_RMSE_distance_z <- base::scale(lcp_B_A_RMSE_distance$max_distance, center= TRUE, scale=TRUE)
 
 lcp_rmse_distances_z <- rbind(data.frame(id = "A", distance = lcp_A_B_RMSE_distance_z), data.frame(id = "B", distance = lcp_B_A_RMSE_distance_z))
 
+# export z-score of the accuracy of the Least Cost Paths without incorporating vertical error based on accuracy of the Least Cost Paths incorporating vertical error
 write.csv(x = (lcp_A_B_distance - mean(lcp_A_B_RMSE_distance$max_distance)) / sd(lcp_A_B_RMSE_distance$max_distance), file = "./outputs/Statistical assessments/lcp_A_B_z_score.csv")
 write.csv(x = (lcp_B_A_distance - mean(lcp_B_A_RMSE_distance$max_distance)) / sd(lcp_B_A_RMSE_distance$max_distance), file = "./outputs/Statistical assessments/lcp_B_A_z_score.csv")
 
@@ -296,4 +319,3 @@ lcp_z_score_plot <- ggplot(data = lcp_rmse_distances_z, aes(x = distance)) +
   theme(strip.text.x = element_text(angle = 0, hjust = 0))
 
 ggsave(filename = "./outputs/plots/lcp_z_score_plot.png", plot = lcp_z_score_plot, dpi = 300, width = 14, height = 7)
-
