@@ -2,7 +2,7 @@ Preprint available: https://doi.org/10.31235/osf.io/mxas2
 
 Data and Code also available on Zenodo:
 
-[![DOI](https://zenodo.org/badge/277867759.svg)](https://zenodo.org/badge/latestdoi/277867759)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4074956.svg)](https://doi.org/10.5281/zenodo.4074956)
 
 # Probabilistic Modelling using Monte Carlo Simulation for Incorporating Uncertainty in Least Cost Path Results: a Roman Road Case Study
 
