@@ -7,11 +7,15 @@ library(rgeos) # for vector operations
 library(leastcostpath) # for creating cost surfaces, adding vertical error, calculating least cost paths and probabilistic least cost path
 library(tmap) # for producing probabilistic least cost path maps
 library(ggplot2) # for producing histograms graph
+library(DMMF) # for digital elevation model sink fills
 
 #### CONSTANTS ####
 
 # Number of iterations to run when propogating vertical error on Least Cost Path results
 n <- 1000
+
+# Vertical error (Root Mean Square Error) of Digital Elevation Model
+RMSE <- 4.0
 
 # Seed set for reproducibility
 set.seed(76418)
@@ -22,14 +26,11 @@ osgb <- "+init=epsg:27700"
 
 #### PRCOESSING SRTM ELEVATION DATA ####
 
-elev_osgb <- raster("./Data/SRTM elevation/Elevation OSGB.tif")
-
+elev_files <- list.files(path = "./Data/OS Terrain 50/",  pattern = "\\.asc$", full.names = TRUE)
+elev_list <- lapply(elev_files, raster::raster)
+elev_osgb <- do.call(raster::merge, elev_list)
+elev_osgb <- raster::crop(elev_osgb, c(341940, 349640, 508130, 524940))
 raster::crs(elev_osgb) <- raster::crs(osgb)
-
-# create hillshade for plotting
-slope = terrain(elev_osgb, opt='slope')
-aspect = terrain(elev_osgb, opt='aspect')
-hill = hillShade(slope, aspect, 40, 270)
 
 #### PROCESSING HIGH STREET ROMAN ROAD ####
 
@@ -57,8 +58,8 @@ slope_cs <- leastcostpath::create_slope_cs(elev_osgb, cost_function = "tobler", 
 # Least Cost Path from A to B and B to A (due to directional = FALSE)
 lcp <- leastcostpath::create_lcp(cost_surface = slope_cs, origin = A, destination = B, directional = FALSE)
 
-writeOGR(obj = lcp[lcp$direction == "A to B",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_A_B_SRTM", driver = "ESRI Shapefile", overwrite_layer = TRUE)
-writeOGR(obj = lcp[lcp$direction == "B to A",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_B_A_SRTM", driver = "ESRI Shapefile", overwrite_layer = TRUE)
+#writeOGR(obj = lcp[lcp$direction == "A to B",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_A_B_OS_50", driver = "ESRI Shapefile", overwrite_layer = TRUE)
+#writeOGR(obj = lcp[lcp$direction == "B to A",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_B_A_OS_50", driver = "ESRI Shapefile", overwrite_layer = TRUE)
 
 #### INCORPORATE VERTICAL ERROR AND CREATE LCPS ####
 
@@ -66,60 +67,64 @@ writeOGR(obj = lcp[lcp$direction == "B to A",], dsn = "./Outputs/Least Cost Path
 lcps <- list()
 
 for (i in 1:n) {
-  
-  print(i)
-  
-  # Create Least Cost Path based on DEM with a random error field representing the vertical error added. Add to lcps list
 
-lcps[[i]] <- leastcostpath::create_lcp(cost_surface = leastcostpath::create_slope_cs(dem = leastcostpath::add_dem_error(dem = elev_osgb, rmse = 9.73, type = "autocorrelated"), cost_function = "tobler", neighbours = 16), origin = A, destination = B, directional = FALSE, cost_distance = TRUE)
+  print(i)
+
+  # Create Least Cost Path based on sink-fill-corrected DEM with a random error field representing the vertical error added. Add to lcps list
+
+lcps[[i]] <- leastcostpath::create_lcp(cost_surface = leastcostpath::create_slope_cs(dem = DMMF::SinkFill(DEM = leastcostpath::add_dem_error(dem = elev_osgb, rmse = RMSE, type = "autocorrelated"))$DEM_nosink, cost_function = "tobler", neighbours = 16), origin = A, destination = B, directional = FALSE, cost_distance = TRUE)
 
 }
 
 # bind list of Least Cost Paths to one object
 lcps <- do.call(rbind, lcps)
 
-writeOGR(obj = lcps[lcps$direction == "A to B",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_A_B_SRTM_RMSE_inc", driver = "ESRI Shapefile", overwrite_layer = TRUE)
-writeOGR(obj = lcps[lcps$direction == "B to A",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_B_A_SRTM_RMSE_inc", driver = "ESRI Shapefile", overwrite_layer = TRUE)
+#writeOGR(obj = lcps[lcps$direction == "A to B",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_A_B_OS_50_RMSE_inc", driver = "ESRI Shapefile", overwrite_layer = TRUE)
+#writeOGR(obj = lcps[lcps$direction == "B to A",], dsn = "./Outputs/Least Cost Paths", layer = "LCP_B_A_OS_50_RMSE_inc", driver = "ESRI Shapefile", overwrite_layer = TRUE)
 
 #### PRODUCE LEAST COST PATH MAPS ####
 
 lcp_A_B_map <- 
-  tm_shape(hill) + 
-  tm_raster(palette = gray.colors(10, start = 0, end = 1), legend.show = FALSE) + 
+  tm_shape(elev_osgb) + 
+  tm_raster(palette = gray.colors(10, start = 0, end = 1), n = 10, legend.show = TRUE, legend.reverse = TRUE, title = "Elevation (m)") + 
   tm_shape(waterbodies) + 
   tm_polygons(col = "#9ECAE1", border.col = "#9ECAE1", legend.show = TRUE) + 
   tm_shape(road) +
   tm_polygons(col = "black", border.col = "black") + 
   tm_shape(lcp[lcp$direction == "A to B",]) +
-  tm_lines(col = "red", border.col = "red") + 
+  tm_lines(col = "red") + 
   tm_add_legend(type = "line", labels = "Least Cost Path", col = "red", border.col = "red") + 
   tm_legend(show = TRUE, outside = TRUE, legend.position = c("right","bottom")) + 
   tm_add_legend(type = "fill", labels = "Roman Road", col = "black", border.col = "black") + 
-  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1")
+  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1") +
+  tm_compass(type="arrow", position=c("right", "bottom"), show.labels = 2) + 
+  tm_scale_bar(width = 0.01, position = c("right", "bottom"), breaks = c(0, 2, 4))
 
-tmap_save(lcp_A_B_map, "./outputs/Plots/lcp_A_to_B.png")
+#tmap::save_tmap(lcp_A_B_map, "./outputs/Plots/lcp_A_to_B.png")
 
 lcp_B_A_map <- 
-  tm_shape(hill) + 
-  tm_raster(palette = gray.colors(10, start = 0, end = 1), legend.show = FALSE) + 
+  tm_shape(elev_osgb) + 
+  tm_raster(palette = gray.colors(10, start = 0, end = 1), n = 10, legend.show = TRUE, legend.reverse = TRUE, title = "Elevation (m)") + 
   tm_shape(waterbodies) + 
   tm_polygons(col = "#9ECAE1", border.col = "#9ECAE1", legend.show = TRUE) + 
   tm_shape(road) +
   tm_polygons(col = "black", border.col = "black") + 
   tm_shape(lcp[lcp$direction == "B to A",]) +
-  tm_lines(col = "red", border.col = "red") + 
+  tm_lines(col = "red") + 
   tm_legend(show = TRUE, outside = TRUE, legend.position = c("right","bottom")) + 
   tm_add_legend(type = "line", labels = "Least Cost Path", col = "red", border.col = "red") + 
   tm_add_legend(type = "fill", labels = "Roman Road", col = "black", border.col = "black") + 
-  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1")
+  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1") +
+  tm_compass(type="arrow", position=c("right", "bottom"), show.labels = 2) + 
+  tm_scale_bar(width = 0.01, position = c("right", "bottom"), breaks = c(0, 2, 4))
 
-tmap_save(lcp_B_A_map, "./outputs/Plots/lcp_B_to_A.png")
+#tmap::save_tmap(lcp_B_A_map, "./outputs/Plots/lcp_B_to_A.png")
 
 #### CALCULATE PROBABILISTIC LEAST COST PATHS ####
 
 # Create Least Cost Path density rasters using the Least Cost Paths incorporating vertical error
-lcp_A_B_density <- create_lcp_density(lcps[lcps$direction == "A to B",], raster = elev_osgb, rescale = FALSE, rasterize_as_points = FALSE)
-lcp_B_A_density <- create_lcp_density(lcps[lcps$direction == "B to A",], raster = elev_osgb, rescale = FALSE, rasterize_as_points = FALSE)
+lcp_A_B_density <- leastcostpath::create_lcp_density(lcps[lcps$direction == "A to B",], raster = elev_osgb, rescale = FALSE, rasterize_as_points = FALSE)
+lcp_B_A_density <- leastcostpath::create_lcp_density(lcps[lcps$direction == "B to A",], raster = elev_osgb, rescale = FALSE, rasterize_as_points = FALSE)
 
 lcp_A_B_density[lcp_A_B_density == 0] <- NA
 lcp_B_A_density[lcp_B_A_density == 0] <- NA
@@ -128,84 +133,48 @@ lcp_B_A_density[lcp_B_A_density == 0] <- NA
 lcp_A_B_density <- (lcp_A_B_density / n)
 lcp_B_A_density <- (lcp_B_A_density / n)
 
-raster::writeRaster(x = lcp_A_B_density, filename = "./outputs/Probabilistic Least Cost Paths/lcp_A_B_density.tif", overwrite=TRUE)
-raster::writeRaster(x = lcp_B_A_density, filename = "./outputs/Probabilistic Least Cost Paths/lcp_B_A_density.tif", overwrite=TRUE)
+#raster::writeRaster(x = lcp_A_B_density, filename = "./outputs/Probabilistic Least Cost Paths/lcp_A_B_density.tif", overwrite=TRUE)
+#raster::writeRaster(x = lcp_B_A_density, filename = "./outputs/Probabilistic Least Cost Paths/lcp_B_A_density.tif", overwrite=TRUE)
 
 #### PRODUCE PROBABILISTIC LEAST COST PATH MAPS ####
 
 lcp_A_B_density_map <- 
-  tm_shape(hill) + 
-  tm_raster(palette = gray.colors(10, start = 0, end = 1), legend.show = FALSE) + 
+  tm_shape(elev_osgb) + 
+  tm_raster(palette = gray.colors(10, start = 0, end = 1), n = 10, legend.show = TRUE, legend.reverse = TRUE, title = "Elevation (m)") + 
   tm_shape(waterbodies) + 
   tm_polygons(col = "#9ECAE1", border.col = "#9ECAE1", legend.show = TRUE) + 
-  tm_shape(lcp_A_B_density * 100) + 
-  tm_raster(style = "quantile", n = 10, title = "Probability of Least\nCost Path crossing\ncell (percentile)",
+  tm_shape(lcp_A_B_density) + 
+  tm_raster(style = "quantile", n = 10, title = "Probability of Least\nCost Path crossing\ncell",
             palette = viridis::plasma(10),
             legend.hist = FALSE) +
   tm_shape(road) +
   tm_polygons(col = "black", border.col = "black") + 
   tm_legend(show = TRUE, outside = TRUE, legend.position = c("right","bottom")) + 
   tm_add_legend(type = "fill", labels = "Roman Road", col = "black", border.col = "black") + 
-  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1")
+  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1") +
+  tm_compass(type="arrow", position=c("right", "bottom"), show.labels = 2) + 
+  tm_scale_bar(width = 0.01, position = c("right", "bottom"), breaks = c(0, 2, 4))
 
-tmap_save(lcp_A_B_density_map, "./outputs/Plots/lcp_A_to_B_probability_rmse.png", dpi = 300)
+#tmap::save_tmap(lcp_A_B_density_map, "./outputs/Plots/lcp_A_to_B_probability_rmse.png", dpi = 300)
 
 lcp_B_A_density_map <- 
-  tm_shape(hill) + 
-  tm_raster(palette = gray.colors(10, start = 0, end = 1), legend.show = FALSE) + 
+  tm_shape(elev_osgb) + 
+  tm_raster(palette = gray.colors(10, start = 0, end = 1), n = 10, legend.show = TRUE, legend.reverse = TRUE, title = "Elevation (m)") + 
   tm_shape(waterbodies) + 
   tm_polygons(col = "#9ECAE1", border.col = "#9ECAE1", legend.show = TRUE) + 
-  tm_shape(lcp_B_A_density * 100) + 
-  tm_raster(style = "quantile", n = 10, title = "Probability of Least\nCost Path crossing\ncell (percentile)",
+  tm_shape(lcp_B_A_density) + 
+  tm_raster(style = "quantile", n = 10, title = "Probability of Least\nCost Path crossing\ncell",
             palette = viridis::plasma(10),
             legend.hist = FALSE) +
   tm_shape(road) +
   tm_polygons(col = "black", border.col = "black") + 
   tm_legend(show = TRUE, outside = TRUE, legend.position = c("right","bottom")) + 
   tm_add_legend(type = "fill", labels = "Roman Road", col = "black", border.col = "black") + 
-  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1")
+  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1") +
+  tm_compass(type="arrow", position=c("right", "bottom"), show.labels = 2) + 
+  tm_scale_bar(width = 0.01, position = c("right", "bottom"), breaks = c(0, 2, 4))
 
-tmap_save(lcp_B_A_density_map, "./outputs/Plots/lcp_B_to_A_probability_rmse.png", dpi = 300)
-
-#### PRODUCE 80th percentile PROBABILISTIC LEAST COST PATH MAPS ####
-
-lcp_A_B_density_80th_percentile <- lcp_A_B_density >= quantile(lcp_A_B_density, 0.8)
-
-lcp_A_B_density_80th_percentile_map <- 
-  tm_shape(hill) + 
-  tm_raster(palette = gray.colors(10, start = 0, end = 1), legend.show = FALSE) + 
-  tm_shape(waterbodies) + 
-  tm_polygons(col = "#9ECAE1", border.col = "#9ECAE1", legend.show = TRUE) + 
-  tm_shape(lcp_A_B_density_80th_percentile) + 
-  tm_raster(n = 2, title = "Probability of Least\nCost Path crossing\ncell >= 80th percentile",
-            palette = c("#d7191c", "#1a9641"),
-            legend.hist = FALSE, legend.reverse = TRUE) +
-  tm_shape(road) +
-  tm_polygons(col = "black", border.col = "black") + 
-  tm_legend(show = TRUE, outside = TRUE, legend.position = c("right","bottom")) + 
-  tm_add_legend(type = "fill", labels = "Roman Road", col = "black", border.col = "black") + 
-  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1")
-
-tmap_save(lcp_A_B_density_80th_percentile_map, "./outputs/Plots/lcp_A_to_B_probability_rmse_80th_percentile.png", dpi = 300)
-
-lcp_B_A_density_80th_percentile <- lcp_B_A_density >= quantile(lcp_B_A_density, 0.8)
-
-lcp_B_A_density_80th_percentile_map <- 
-  tm_shape(hill) + 
-  tm_raster(palette = gray.colors(10, start = 0, end = 1), legend.show = FALSE) + 
-  tm_shape(waterbodies) + 
-  tm_polygons(col = "#9ECAE1", border.col = "#9ECAE1", legend.show = TRUE) + 
-  tm_shape(lcp_B_A_density_80th_percentile) + 
-  tm_raster(n = 2, title = "Probability of Least\nCost Path crossing\ncell >= 80th percentile",
-            palette = c("#d7191c", "#1a9641"),
-            legend.hist = FALSE, legend.reverse = TRUE) +
-  tm_shape(road) +
-  tm_polygons(col = "black", border.col = "black") + 
-  tm_legend(show = TRUE, outside = TRUE, legend.position = c("right","bottom")) + 
-  tm_add_legend(type = "fill", labels = "Roman Road", col = "black", border.col = "black") + 
-  tm_add_legend(type = "fill", labels = "Waterbodies", col = "#9ECAE1", border.col = "#9ECAE1")
-
-tmap_save(lcp_B_A_density_80th_percentile_map, "./outputs/Plots/lcp_B_to_A_probability_rmse_80th_percentile.png", dpi = 300)
+#tmap::save_tmap(lcp_B_A_density_map, "./outputs/Plots/lcp_B_to_A_probability_rmse.png", dpi = 300)
 
 ###### CALCULATING MAXIMUM DISTANCE FROM LCPs TO KNOWN LOCATION OF HIGH STREET ROMAN ROAD #####
 
@@ -213,8 +182,8 @@ lcp_A_B_distance <- max(rgeos::gDistance(spgeom1 = lcp[lcp$direction == "A to B"
 
 lcp_B_A_distance <- max(rgeos::gDistance(spgeom1 = lcp[lcp$direction == "B to A",], SpatialPoints(road@polygons[[1]]@Polygons[[1]]@coords, proj4string = crs(osgb)), byid = TRUE))
 
-write.csv(lcp_A_B_distance, "./outputs/Statistical assessments/lcp_A_B_max_distance.csv")
-write.csv(lcp_B_A_distance, "./outputs/Statistical assessments/lcp_B_A_max_distance.csv")
+#write.csv(lcp_A_B_distance, "./outputs/Statistical assessments/lcp_A_B_max_distance.csv")
+#write.csv(lcp_B_A_distance, "./outputs/Statistical assessments/lcp_B_A_max_distance.csv")
 
 lcp_A_B_RMSE_distance <- list()
 lcp_B_A_RMSE_distance <- list()
@@ -224,98 +193,44 @@ for(i in 1:(nrow(lcps) / 2)) {
   lcp_A_B_RMSE_distance[[i]] <- max(rgeos::gDistance(spgeom1 = lcps[lcps$direction == "A to B",][i,], sp::SpatialPoints(road@polygons[[1]]@Polygons[[1]]@coords, proj4string = raster::crs(osgb)), byid = TRUE))
   
   lcp_B_A_RMSE_distance[[i]] <- max(rgeos::gDistance(spgeom1 = lcps[lcps$direction == "B to A",][i,], sp::SpatialPoints(road@polygons[[1]]@Polygons[[1]]@coords, proj4string = raster::crs(osgb)), byid = TRUE))
+
 }
 
 lcp_A_B_RMSE_distance <- unlist(lcp_A_B_RMSE_distance)
 lcp_B_A_RMSE_distance <- unlist(lcp_B_A_RMSE_distance)
 
-write.csv(lcp_A_B_RMSE_distance, "./outputs/Statistical assessments/MC_1000_lcp_A_B_max_distance.csv")
-write.csv(lcp_B_A_RMSE_distance, "./outputs/Statistical assessments/MC_1000_lcp_B_A_max_distance.csv")
+lcp_A_B_RMSE_distance <- data.frame(ID = "A", max_distance = lcp_A_B_RMSE_distance)
+lcp_B_A_RMSE_distance <- data.frame(ID = "B", max_distance = lcp_B_A_RMSE_distance)
 
-#### STATISTICAL ASSESSMENTS OF MAXIMUM DISTANCES - MONTE CARLO SIMULATION CONVERGENCE ####
+#write.csv(lcp_A_B_RMSE_distance, "./outputs/Statistical assessments/MC_1000_lcp_A_B_max_distance.csv")
+#write.csv(lcp_B_A_RMSE_distance, "./outputs/Statistical assessments/MC_1000_lcp_B_A_max_distance.csv")
 
-lcp_A_B_RMSE_distance <- data.frame("max_distance" = lcp_A_B_RMSE_distance)
-lcp_B_A_RMSE_distance <- data.frame("max_distance" = lcp_B_A_RMSE_distance)
+lcp_rmse_distances <- rbind(lcp_A_B_RMSE_distance, lcp_B_A_RMSE_distance)
 
-lcp_A_B_RMSE_distance$id <- 1:n
-lcp_B_A_RMSE_distance$id <- 1:n
-
-for (i in 1:n) { 
-  
-  # calculate mean-maximum accuracy of the Least Cost Paths as the number of simulations increase
-  lcp_A_B_RMSE_distance$mean[i] <- mean(lcp_A_B_RMSE_distance$max_distance[1:i]) 
-  lcp_B_A_RMSE_distance$mean[i] <- mean(lcp_B_A_RMSE_distance$max_distance[1:i])
-  
-  # calculate standard deviation of the maximum accuracy of the Least Cost Paths as the number of simulations increase
-  lcp_A_B_RMSE_distance$sd[i] <- sd(lcp_A_B_RMSE_distance$max_distance[1:i])
-  lcp_B_A_RMSE_distance$sd[i] <- sd(lcp_B_A_RMSE_distance$max_distance[1:i])
-  
-}
-
-# calculate standard error of Least Cost Path accuracy as the number of simulations increase
-lcp_A_B_RMSE_distance$error <- qnorm(0.975) * lcp_A_B_RMSE_distance$sd / sqrt(lcp_A_B_RMSE_distance$id)
-lcp_B_A_RMSE_distance$error <- qnorm(0.975) * lcp_B_A_RMSE_distance$sd / sqrt(lcp_B_A_RMSE_distance$id)
-
-# calculate width of the confidence interval of Least Cost Path accuracy as the number of simulations increase
-lcp_A_B_RMSE_distance$ci_width <- lcp_A_B_RMSE_distance$error * 2
-lcp_B_A_RMSE_distance$ci_width <- lcp_B_A_RMSE_distance$error * 2
-
-lcp_A_B_RMSE_distance$below_95 <- lcp_A_B_RMSE_distance$mean - lcp_A_B_RMSE_distance$error
-lcp_B_A_RMSE_distance$below_95 <- lcp_B_A_RMSE_distance$mean - lcp_B_A_RMSE_distance$error
-
-lcp_A_B_RMSE_distance$above_95 <- lcp_A_B_RMSE_distance$mean + lcp_A_B_RMSE_distance$error
-lcp_B_A_RMSE_distance$above_95 <- lcp_B_A_RMSE_distance$mean + lcp_B_A_RMSE_distance$error
-
-# check if confidence interval width less than minimum resolution of the DEM
-lcp_A_B_RMSE_distance$convergence <- lcp_A_B_RMSE_distance$ci_width < min(res(elev_osgb))
-lcp_B_A_RMSE_distance$convergence <- lcp_B_A_RMSE_distance$ci_width < min(res(elev_osgb))
-
-lcp_A_B_RMSE_distance$plot <- "A"
-lcp_B_A_RMSE_distance$plot <- "B"
-
-lcp_convergence <- rbind(lcp_A_B_RMSE_distance, lcp_B_A_RMSE_distance)
-
-write.csv(x = lcp_convergence, file = "./outputs/Statistical assessments/lcp_RMSE_convergence.csv")
-
-LCP_RMSE_convergence <- ggplot(data=lcp_convergence) +
-  facet_wrap(~plot) + 
-  geom_ribbon(aes(x = id, ymin=below_95, ymax=above_95, fill = convergence), alpha=0.5, show.legend = FALSE) + 
-  geom_line(aes(x=id, y=mean), colour = "black", lwd = 1, lty = 2) + 
-  scale_fill_manual( values = c("#d7191c", "#1a9641")) + 
-  labs(x = "Number of Iterations", y = "Mean-Maximum Distance from Least Cost\nPaths to High Street Roman road (metres)", fill = "Converged") +
-  scale_x_continuous( breaks = seq(0, 1000, 100)) +
-  ylim(600, 1000) + 
+lcp_distance_plot <- ggplot(data = lcp_rmse_distances, aes(x = max_distance)) + 
+  geom_density(aes(fill= ID, colour = ID), size = 1, alpha = 0.5, show.legend = FALSE) + 
+  facet_wrap(~ID) + 
+  geom_vline(data = data.frame(ID = "A", lcp_A_B_distance), aes(xintercept = lcp_A_B_distance), colour = "black", linetype = "dashed", size = 1.2) + 
+  geom_vline(data = data.frame(ID = "B", lcp_B_A_distance), aes(xintercept = lcp_B_A_distance), colour = "black", linetype = "dashed", size = 1.2) + 
+  xlim(c(0, 1500)) + 
   theme_minimal(base_size = 24) + 
-  theme(strip.text.x = element_text(angle = 0, hjust = 0), axis.text.x = element_text(angle = 45))
-
-ggsave(filename = "./outputs/plots/LCP_RMSE_convergence.png", plot = LCP_RMSE_convergence, dpi = 300, width = 14,height = 7)
-
-#### STATISTICAL ASSESSMENTS OF MAXIMUM DISTANCES - Z SCORES ####
-
-# standardise maximum distance of least cost paths incorporating vertical error to mean 0 and Standard Deviation 1.  
-lcp_A_B_RMSE_distance_z <- base::scale(lcp_A_B_RMSE_distance$max_distance, center= TRUE, scale=TRUE)
-lcp_B_A_RMSE_distance_z <- base::scale(lcp_B_A_RMSE_distance$max_distance, center= TRUE, scale=TRUE)
-
-lcp_rmse_distances_z <- rbind(data.frame(id = "A", distance = lcp_A_B_RMSE_distance_z), data.frame(id = "B", distance = lcp_B_A_RMSE_distance_z))
-
-# export z-score of the accuracy of the Least Cost Paths without incorporating vertical error based on accuracy of the Least Cost Paths incorporating vertical error
-write.csv(x = (lcp_A_B_distance - mean(lcp_A_B_RMSE_distance$max_distance)) / sd(lcp_A_B_RMSE_distance$max_distance), file = "./outputs/Statistical assessments/lcp_A_B_z_score.csv")
-write.csv(x = (lcp_B_A_distance - mean(lcp_B_A_RMSE_distance$max_distance)) / sd(lcp_B_A_RMSE_distance$max_distance), file = "./outputs/Statistical assessments/lcp_B_A_z_score.csv")
-
-write.csv(x = stats::pnorm((lcp_B_A_distance - mean(lcp_B_A_RMSE_distance$max_distance)) / sd(lcp_B_A_RMSE_distance$max_distance)), file = "./outputs/Statistical assessments/lcp_B_A_probability.csv")
-
-lcp_z_score_plot <- ggplot(data = lcp_rmse_distances_z, aes(x = distance)) + 
-  geom_histogram(aes(fill= id, colour = id), size = 1, alpha = 0.5, bins = 50, show.legend = FALSE) + 
-  facet_wrap(~id) + 
-  geom_vline(data = data.frame(id = "A", z_score = (lcp_A_B_distance - mean(lcp_A_B_RMSE_distance$max_distance)) / sd(lcp_A_B_RMSE_distance$max_distance)), aes(xintercept = z_score), colour = "black", linetype = "dashed", size = 1.2) + 
-  geom_vline(data = data.frame(id = "B", z_score = (lcp_B_A_distance - mean(lcp_B_A_RMSE_distance$max_distance)) / sd(lcp_B_A_RMSE_distance$max_distance)), aes(xintercept = z_score), colour = "black", linetype = "dashed", size = 1.2) + 
-  xlim(c(-5, 5)) + 
-  theme_minimal(base_size = 24) + 
-  labs(x = "Z score", y = "Number of Least Cost Paths") + 
+  labs(x = "Maximum straight-line distance from\nLCP to High Street Roman Road (metres)", y = "Density of Least Cost Paths") + 
   scale_fill_manual(values=c("#00BFC4", "#F8766D")) +
   scale_colour_manual(values=c("#00BFC4", "#F8766D")) + 
-  geom_text(data=rbind(data.frame(id = "A", z_score = (lcp_A_B_distance - mean(lcp_A_B_RMSE_distance$max_distance)) / sd(lcp_A_B_RMSE_distance$max_distance)), data.frame(id = "B", z_score = (lcp_B_A_distance - mean(lcp_B_A_RMSE_distance$max_distance)) / sd(lcp_B_A_RMSE_distance$max_distance))), 
-            aes(label= paste0("Z = ", round(z_score,2)), x= -2., y=80), colour="black", size = 8) + 
+  geom_text(data=data.frame(ID = "A", distance = lcp_A_B_distance), 
+            aes(label= paste0(round(distance,2), "m"), x= 600, y=0.0045), colour="black", size = 8) + 
+  geom_text(data=data.frame(ID = "B", distance = lcp_B_A_distance), 
+            aes(label= paste0(round(distance,2), "m"), x= 450, y=0.0045), colour="black", size = 8) + 
   theme(strip.text.x = element_text(angle = 0, hjust = 0))
 
-ggsave(filename = "./outputs/plots/lcp_z_score_plot.png", plot = lcp_z_score_plot, dpi = 300, width = 14, height = 7)
+#ggsave(filename = "./outputs/plots/lcp_distance_plot.png", plot = lcp_distance_plot, dpi = 300, width = 14, height = 7)
+
+###### MONTE CARLO HYPOTHESIS TESTING #####
+
+MC_HT_A_B <- round((sum(lcp_A_B_distance >= lcp_A_B_RMSE_distance$max_distance) / 1001), 3)
+
+MC_HT_B_A <- round((sum(lcp_B_A_distance >= lcp_B_A_RMSE_distance$max_distance) / 1001), 3)
+
+#write.csv(MC_HT_A_B, "./outputs/Statistical assessments/MC_HT_A_B.csv")
+#write.csv(MC_HT_B_A, "./outputs/Statistical assessments/MC_HT_B_A.csv")
+
