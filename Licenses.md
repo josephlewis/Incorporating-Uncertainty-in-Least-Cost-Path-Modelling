@@ -3,7 +3,7 @@
 Licenses
 ---------------
 
-**Ordnance Survey Terrain 50 **
+**Ordnance Survey Terrain 50**
 
 ORDNANCE SURVEY DATA LICENCE
 
