@@ -3,57 +3,26 @@
 Licenses
 ---------------
 
-**PROCESSED SRTM DATA VERSION 4.1**
+**Ordnance Survey Terrain 50 **
 
-The data  distributed here  are in  ARC GRID,  ARC ASCII  and Geotiff format, in
-decimal degrees and datum WGS84.  They are derived from the USGS/NASA SRTM data.
-CIAT  have  processed  this  data  to  provide  seamless  continuous  topography
-surfaces.  Areas with  regions of no  data in the  original SRTM data  have been
-filled using interpolation methods described by Reuter et al. (2007).
+ORDNANCE SURVEY DATA LICENCE
 
-Version 4.1 has the following enhancements over V4.0:
-- Improved ocean mask used, which includes some small islands  previously  being 
-  lost in the cut data.
-- Single no-data line of pixels along meridians fixed.
-- All GeoTiffs with 6000 x 6000 pixels.
-- For ASCII format files the projection definition is included in .prj files.
-- For GeoTiff format files the projection definition is in the .tfw  (ESRI TIFF 
-  World) and a .hdr file that reports PROJ.4 equivelent projection definitions.
+Your use of this data is subject to terms at www.ordnancesurvey.co.uk/opendata/licence.
 
-DISTRIBUTION
+© Crown copyright and database right 2020.
 
-Users are  prohibited from  any commercial,  non-free resale,  or redistribution
-without explicit written permission from CIAT. Users should acknowledge CIAT  as
-the source used  in the creation  of any reports,  publications, new data  sets,
-derived products, or services resulting from the use of this data set. CIAT also
-request  reprints of  any publications  and notification  of any  redistributing
-efforts.   For commercial  access to  the data,  send requests  to Andy   Jarvis
-(a.jarvis@cgiar.org).
+Using Information under this licence
+Use of copyright and database right material expressly made available under this licence (the 'Information') indicates your acceptance of the terms and conditions below.
 
-NO WARRANTY OR LIABILITY
+The Licensor grants you a worldwide, royalty-free, perpetual, non-exclusive licence to use the Information subject to the conditions below.
 
-CIAT provides  these data  without any  warranty of  any kind whatsoever, either
-express or implied,  including warranties of  merchantability and fitness  for a
-particular purpose. CIAT shall not  be liable for incidental, consequential,  or
-special damages arising out of the use of any data.
+This licence does not affect your freedom under fair dealing or fair use or any other copyright or database right exceptions and limitations.
 
-ACKNOWLEDGMENT AND CITATION
+You are free to:
+copy, publish, distribute and transmit the Information;
+adapt the Information;
+exploit the Information commercially and non-commercially for example, by combining it with other Information, or by including it in your own product or application.
 
-We kindly ask  any users to  cite this data  in any published  material produced
-using this data,  and if possible  link web pages  to the CIAT-CSI  SRTM website
-(http://srtm.csi.cgiar.org).
-
-Citations should be made as follows:
-
-Jarvis A., H.I. Reuter, A.  Nelson, E. Guevara, 2008, Hole-filled  seamless SRTM
-data V4, International  Centre for Tropical  Agriculture (CIAT), available  from
-http://srtm.csi.cgiar.org.
-
-REFERENCES
-
-Reuter  H.I,  A.  Nelson,  A.  Jarvis,  2007,  An  evaluation  of  void  filling
-interpolation  methods  for  SRTM  data,  International  Journal  of  Geographic
-Information Science, 21:9, 983-1008.
 
 **Waterbodies**
 
