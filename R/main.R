@@ -61,6 +61,13 @@ lcp <- leastcostpath::create_lcp(cost_surface = slope_cs, origin = A, destinatio
 writeOGR(obj = lcp[lcp$direction == 'A to B',], dsn = './Outputs/Least Cost Paths', layer = 'LCP_OS_50', driver = 'ESRI Shapefile',
 overwrite_layer = TRUE)
 
+#### CALCULATE SPATIAL AUTOCORRELATION IN DIGITAL ELEVATION MODEL ####
+
+elev_osgb_spdf <- as(elev_osgb, "SpatialPixelsDataFrame")
+vario = variogram(layer~1, elev_osgb_spdf)
+fit = fit.variogram(vario, vgm("Sph"))
+window <- round(fit[fit$model == "Sph",]$range / max(res(elev_osgb)))
+
 #### INCORPORATE VERTICAL ERROR AND CREATE LCPS ####
 
 # create empty list to be filled with Least Cost Paths
@@ -72,10 +79,10 @@ for (i in 1:n) {
     
     # Create Least Cost Path based on sink-fill-corrected DEM with a random error field representing the vertical error added. Add to lcps list
     
-    lcps[[i]] <- leastcostpath::create_lcp(cost_surface = leastcostpath::create_slope_cs(dem = DMMF::SinkFill(DEM = leastcostpath::add_dem_error(dem = elev_osgb, 
-        rmse = RMSE, type = "autocorrelated"))$DEM_nosink, cost_function = "llobera-sluckin", neighbours = 48), origin = A, destination = B, directional = TRUE, 
+    lcps[[i]] <- leastcostpath::create_lcp(cost_surface = leastcostpath::create_slope_cs(dem = DMMF::SinkFill(DEM = add_dem_error(dem = elev_osgb, 
+        rmse = RMSE, type = "autocorrelated", size = window))$DEM_nosink, cost_function = "llobera-sluckin", neighbours = 48), origin = A, destination = B, directional = TRUE, 
         cost_distance = TRUE)
-    
+
 }
 
 # bind list of Least Cost Paths to one object
@@ -117,3 +124,5 @@ lcp_A_B_density_map <- tm_shape(elev_osgb) + tm_raster(palette = gray.colors(10,
     "bottom"), breaks = c(0, 2, 4))
 
 tmap::tmap_save(lcp_A_B_density_map, './outputs/Plots/lcps.png', width = 5, height = 6)
+
+
