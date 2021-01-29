@@ -5,9 +5,9 @@ library(rgdal)  # for loading/writing geospatial data
 library(sp)  # for vector manipulation
 library(rgeos)  # for vector operations
 library(leastcostpath)  # for creating cost surfaces, adding vertical error, calculating least cost paths and probabilistic least cost path
-library(tmap)  # for producing probabilistic least cost path maps
-library(ggplot2)  # for producing histograms graph
+library(gstat) # for calculating window size
 library(DMMF)  # for digital elevation model sink fills
+library(tmap)  # for producing probabilistic least cost path maps
 
 #### CONSTANTS ####
 
@@ -64,8 +64,8 @@ overwrite_layer = TRUE)
 #### CALCULATE SPATIAL AUTOCORRELATION IN DIGITAL ELEVATION MODEL ####
 
 elev_osgb_spdf <- as(elev_osgb, "SpatialPixelsDataFrame")
-vario = variogram(layer~1, elev_osgb_spdf)
-fit = fit.variogram(vario, vgm("Sph"))
+vario = gstat::variogram(layer~1, elev_osgb_spdf)
+fit = gstat::fit.variogram(vario, vgm("Sph"))
 window <- round(fit[fit$model == "Sph",]$range / max(res(elev_osgb)))
 
 #### INCORPORATE VERTICAL ERROR AND CREATE LCPS ####
