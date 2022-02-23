@@ -1,3 +1,9 @@
+Published in Journal of Archaeological Method and Theory
+
+To cite:
+
+Lewis, J. (2021). Probabilistic Modelling for Incorporating Uncertainty in Least Cost Path Results: a Postdictive Roman Road Case Study. Journal of Archaeological Method and Theory. https://doi.org/10.1007/s10816-021-09522-w
+
 Preprint available: https://doi.org/10.31235/osf.io/mxas2
 
 Data and Code also available on Zenodo:
